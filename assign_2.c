@@ -149,12 +149,14 @@ keygen(unsigned char *password, unsigned char *key, unsigned char *iv,
 	if(bit_mode == 128)
 	{	
 		EVP_BytesToKey(EVP_aes_128_ecb(), EVP_sha1(), NULL, (unsigned char*)password, strlen((char*)password), ic, key, NULL);
+		printf("KEY IS: \n");
 		print_hex(key, 16);
 	}
 	else if(bit_mode == 256)
 	{
 		EVP_BytesToKey(EVP_aes_256_ecb(), EVP_sha1(), NULL, (unsigned char*)password, strlen((char*)password), ic, key, NULL);
-    	print_hex(key, 32);
+    	printf("KEY IS: \n");
+		print_hex(key, 32);
 	}
 
 	
@@ -173,14 +175,11 @@ encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key,
 	/* TODO Task B */
 	int len;
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-	if (bit_mode==256) {
-		EVP_EncryptInit_ex(ctx, EVP_aes_256_ecb(), NULL, key, NULL);
-	} else if (bit_mode==128) {
+	if (bit_mode==128) 
 		EVP_EncryptInit_ex(ctx, EVP_aes_128_ecb(), NULL, key, NULL);
-	} else {
-		usage();
-		return;
-	}
+	else if (bit_mode==256) 
+		EVP_EncryptInit_ex(ctx, EVP_aes_256_ecb(), NULL, key, NULL);
+
 	EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len);
 
 	EVP_EncryptFinal_ex(ctx, ciphertext + len, &len);
@@ -243,22 +242,18 @@ gen_cmac(unsigned char *data, size_t data_len, unsigned char *key,
 	/* TODO Task D */
 	size_t len;
 	CMAC_CTX *ctx = CMAC_CTX_new();
+
 	if (bit_mode==128) 
-	{
 		CMAC_Init(ctx, key, 16, EVP_aes_128_ecb(), NULL);
-	} 
 	else if (bit_mode==256) 
-	{
 		CMAC_Init(ctx, key, 32, EVP_aes_256_ecb(), NULL);
-	} 
-	else 
-	{
-		usage();
-		return;
-	}
+
 	CMAC_Update(ctx, data, data_len);
+
 	CMAC_Final(ctx, cmac, &len);
+
 	CMAC_CTX_free(ctx);
+	
 	return;
 
 
@@ -275,14 +270,15 @@ verify_cmac(unsigned char *cmac1, unsigned char *cmac2)
 
 	verify = 0;
 
+
 	/* TODO Task E */
 	if(strcmp((char*)cmac1,(char*)cmac2)==0)
 	{
-    	printf("verified\n" );
+    	printf("Input cmac was verified!\n" );
     	return 1;
 	}
 	else{
-		printf("failed to verify\n" );
+		printf("Failed to verify input cmac\n" );
 		return 0;
 	}
 
@@ -380,8 +376,9 @@ main(int argc, char **argv)
 	/* Initialize the library */
 	unsigned char *key;
 	unsigned char *iv;
-	unsigned char *cmacFileMem;//Buffer for cmac
-  	unsigned char *cmacFileMem2;
+	unsigned char *cmac1;//Buffer for cmac
+  	unsigned char *cmac2;//Buffer for verification of cmac
+
 	size_t outSize;
 	FILE *inFile = fopen(input_file,"r");   //Declare the inputFile in reading mode
  	FILE *outFile = fopen(output_file, "w");//Declare the outputFile in writing mode
@@ -391,7 +388,6 @@ main(int argc, char **argv)
 	size_t fileLength = ftell(inFile); // read the position which is the size
 	fseek(inFile, pos, SEEK_SET);  // restore original position
 
-  	printf("The size of the input file is %d bytes long\n", (int)fileLength);
 	outSize = (fileLength/BLOCK_SIZE + 1)*BLOCK_SIZE;
     /*allocate memmory for the input buffer */
     unsigned char *inputFileMemory = (unsigned char*)malloc(sizeof(unsigned char*)*(int)fileLength);
@@ -406,20 +402,21 @@ main(int argc, char **argv)
 	if(bit_mode == 128)
 	{
 		key = (unsigned char*)malloc(16*sizeof*key);
-		cmacFileMem = (unsigned char*)malloc(sizeof(unsigned char*)*16);//Buffer for cmac
-		cmacFileMem2 = (unsigned char*)malloc(sizeof(unsigned char*)*16);//Buffer for cmac2
+		cmac1 = (unsigned char*)malloc(sizeof(unsigned char*)*16);//Buffer for cmac
+		cmac2 = (unsigned char*)malloc(sizeof(unsigned char*)*16);//Buffer for verification of cmac	
+		
 	}
 	else if(bit_mode == 256)
 	{
 		key = (unsigned char*)malloc(32*sizeof*key);
-		cmacFileMem = (unsigned char*)malloc(sizeof(unsigned char*)*32);//Buffer for cmac
-		cmacFileMem2 = (unsigned char*)malloc(sizeof(unsigned char*)*32);//Buffer for cmac2
+		cmac1 = (unsigned char*)malloc(sizeof(unsigned char*)*32);//Buffer for cmac
+		cmac2 = (unsigned char*)malloc(sizeof(unsigned char*)*32);//Buffer for verification of cmac
 	}
+	
 
 
 	/* Keygen from password */
 	keygen(password, key, iv, bit_mode);
-
 
 	/* Operate on the data according to the mode */
 	/* encrypt */
@@ -427,46 +424,71 @@ main(int argc, char **argv)
   	case 0:
 		encrypt(inputFileMemory, (int)fileLength, key, iv, outputFileMemory, bit_mode);
 		fwrite(outputFileMemory, sizeof(char), outSize, outFile); 
+		printf("ENCRYPTED HEX: \n");
+		print_hex(outputFileMemory, outSize);
+		printf("\nENCRYPTED IN FILE: %s",output_file);
 		break;
 
 	/* decrypt */
 	case 1:
 		outSize = decrypt(inputFileMemory, (int)fileLength, key, iv, outputFileMemory, bit_mode);
 		fwrite(outputFileMemory, sizeof(char), outSize, outFile);
+		printf("\nDECRYPTED TO FILE: %s \n",output_file);
 		break;
 
 	/* sign */
 	case 2:
-		
 		/* encrypt */
 		encrypt(inputFileMemory, (int)fileLength, key, iv, outputFileMemory, bit_mode);
-		printf("ENCRYPTED:\n");
+		printf("ENCRYPTED HEX:\n");
 		print_hex(outputFileMemory,outSize);
 		/* generate cmac */
-		gen_cmac(inputFileMemory, fileLength, key, cmacFileMem, bit_mode);
+		gen_cmac(inputFileMemory, fileLength, key, cmac1, bit_mode);
 		printf("CMAC: \n");
 		if (bit_mode == 128)
 		{
-			print_hex(cmacFileMem,16);
+			print_hex(cmac1,16);
 		}
 		else if(bit_mode == 256)
 		{
-			print_hex(cmacFileMem,32);
+			print_hex(cmac1,16);
 		}
-		
 		
 		/* sign */
 		fwrite(outputFileMemory, sizeof(char), outSize, outFile);
-		fwrite(cmacFileMem, sizeof(char), 16, outFile);
+		fwrite(cmac1, sizeof(char), 16, outFile);
 		break;
 
 	/* verify */
+	case 3:
+		fileLength -=16;
+		memcpy(cmac1, &inputFileMemory[fileLength], 16);
+		printf("CMAC IS: \n");
+		print_hex(cmac1, 16);
+		outSize = decrypt(inputFileMemory, fileLength, key, iv, outputFileMemory, bit_mode);
+		gen_cmac(outputFileMemory, outSize, key, cmac2, bit_mode);\
+		if(bit_mode == 256)
+			memcpy(cmac2, &cmac2[16], 0);
 		
+		printf("NEW CMAC: \n");
+		print_hex(cmac2,16);
+		/* verify */
+		if (verify_cmac(cmac2,cmac1))
+		{
+			fwrite(outputFileMemory, sizeof(char), outSize, outFile);
+			printf("FILE %s HAS BEEN CREATED / CHANGED\n", output_file);
+		}
+		break;
 	}
 	/* Clean up */
 	fclose(inFile);
   	fclose(outFile);
 	free(input_file);
+	free(key);
+	free(outputFileMemory);
+	free(inputFileMemory);
+	free(cmac1);
+	free(cmac2);
 	free(output_file);
 	free(password);
 
